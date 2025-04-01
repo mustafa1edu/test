@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complete To-Do List with Alarms</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      justify-content: center;
+    }
+    .todo-container {
+      background: white;
+      width: 100%;
+      max-width: 600px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .input-area {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    #task-input {
+      width: 100%;
+      min-height: 80px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+      resize: vertical;
+    }
+    .datetime-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    #due-date, #due-time {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+      flex: 1;
+      min-width: 120px;
+    }
+    .button-row {
+      display: flex;
+      gap: 10px;
+    }
+    #add-btn, #set-alarm {
+      padding: 10px 15px;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+      flex: 1;
+    }
+    #add-btn {
+      background: #28a745;
+    }
+    #add-btn:hover {
+      background: #218838;
+    }
+    #set-alarm {
+      background: #17a2b8;
+    }
+    #set-alarm:hover {
+      background: #138496;
+    }
+    #task-list {
+      list-style: none;
+      padding: 0;
+    }
+    .task-item {
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 4px;
+      background: #f9f9f9;
+      border-left: 4px solid #ddd;
+    }
+    .task-item.overdue {
+      border-left-color: #dc3545;
+      background: #ffe6e6;
+    }
+    .task-item.today {
+      border-left-color: #ffc107;
+      background: #fff3cd;
+    }
+    .task-main {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .task-text {
+      flex: 1;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .task-details {
+      display: flex;
+      flex-direction: column;
+      margin-top: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+    .completed {
+      text-decoration: line-through;
+      color: #888;
+    }
+    .task-actions {
+      display: flex;
+      gap: 5px;
+    }
+    .task-actions button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .complete-btn {
+      color: #28a745;
+    }
+    .delete-btn {
+      color: #dc3545;
+    }
+    .alarm-btn {
+      color: #ffc107;
+    }
+    .clear-all {
+      width: 100%;
+      padding: 10px;
+      background: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      margin-top: 20px;
+      cursor: pointer;
+    }
+    .clear-all:hover {
+      background: #c82333;
+    }
+  </style>
+</head>
+<body>
+  <div class="todo-container">
+    <h1>Complete To-Do List</h1>
+    <div class="input-area">
+      <textarea id="task-input" placeholder="Enter your task details..."></textarea>
+      <div class="datetime-row">
+        <input type="date" id="due-date" placeholder="Due date (optional)">
+        <input type="time" id="due-time" placeholder="Due time (optional)">
+      </div>
+      <div class="button-row">
+        <button id="set-alarm">Set Alarm</button>
+        <button id="add-btn">Add Task</button>
+      </div>
+    </div>
+    <ul id="task-list"></ul>
+    <button id="clear-all" class="clear-all">Clear All</button>
+  </div>
+
+  <script>
+    // DOM Elements
+    const taskInput = document.getElementById('task-input');
+    const dueDate = document.getElementById('due-date');
+    const dueTime = document.getElementById('due-time');
+    const addBtn = document.getElementById('add-btn');
+    const setAlarmBtn = document.getElementById('set-alarm');
+    const taskList = document.getElementById('task-list');
+    const clearAllBtn = document.getElementById('clear-all');
+
+    // Load tasks from localStorage
+    let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+    let alarmTime = null;
+
+    // Initialize notification permission
+    if (Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+
+    // Render all tasks
+    function renderTasks() {
+      taskList.innerHTML = '';
+      
+      // Sort tasks: incomplete first, then by due date
+      tasks.sort((a, b) => {
+        if (a.completed !== b.completed) return a.completed ? 1 : -1;
+        if (!a.dueDateTime && !b.dueDateTime) return 0;
+        if (!a.dueDateTime) return 1;
+        if (!b.dueDateTime) return -1;
+        return new Date(a.dueDateTime) - new Date(b.dueDateTime);
+      });
+      
+      tasks.forEach((task, index) => {
+        const li = document.createElement('li');
+        
+        // Check task status
+        let statusClass = '';
+        if (!task.completed && task.dueDateTime) {
+          const now = new Date();
+          const dueDate = new Date(task.dueDateTime);
+          if (dueDate < now) statusClass = 'overdue';
+          else if (dueDate.toDateString() === now.toDateString()) statusClass = 'today';
+        }
+        
+        li.className = `task-item ${statusClass}`;
+        li.innerHTML = `
+          <div class="task-main">
+            <div>
+              <input type="checkbox" ${task.completed ? 'checked' : ''} onchange="toggleComplete(${index})">
+              <span class="task-text ${task.completed ? 'completed' : ''}">${task.text}</span>
+            </div>
+            <div class="task-actions">
+              ${task.dueDateTime ? `<button class="alarm-btn" onclick="setAlarmManually(${index})">⏰</button>` : ''}
+              <button class="complete-btn" onclick="toggleComplete(${index})">✓</button>
+              <button class="delete-btn" onclick="deleteTask(${index})">✗</button>
+            </div>
+          </div>
+          ${task.dueDateTime ? `
+            <div class="task-details">
+              Due: ${formatDueDate(task.dueDateTime)}
+              ${task.hasAlarm ? ' (Alarm set)' : ''}
+            </div>
+          ` : ''}
+        `;
+        taskList.appendChild(li);
+      });
+    }
+
+    // Format due date
+    function formatDueDate(dateTime) {
+      const date = new Date(dateTime);
+      return date.toLocaleString('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+
+    // Add new task
+    function addTask() {
+      const text = taskInput.value.trim();
+      if (!text) {
+        alert('Please enter a task!');
+        return;
+      }
+
+      let dueDateTime = null;
+      if (dueDate.value || dueTime.value) {
+        const dateStr = dueDate.value || new Date().toISOString().split('T')[0];
+        const timeStr = dueTime.value || '00:00';
+        dueDateTime = `${dateStr}T${timeStr}`;
+      }
+
+      tasks.push({ 
+        text, 
+        dueDateTime,
+        completed: false,
+        hasAlarm: false
+      });
+      
+      taskInput.value = '';
+      dueDate.value = '';
+      dueTime.value = '';
+      
+      saveTasks();
+      renderTasks();
+    }
+
+    // Set alarm for new task
+    function setAlarm() {
+      if (!Notification.permission === 'granted') {
+        alert('Please enable notifications first!');
+        return;
+      }
+
+      const dateStr = dueDate.value || new Date().toISOString().split('T')[0];
+      const timeStr = dueTime.value || '00:00';
+      alarmTime = `${dateStr}T${timeStr}`;
+      
+      const alarmDate = new Date(alarmTime);
+      const now = new Date();
+      
+      if (alarmDate <= now) {
+        alert('Please set a future time!');
+        return;
+      }
+
+      if (confirm(`Set alarm for ${formatDueDate(alarmTime)}?`)) {
+        scheduleNotification(alarmTime, "Reminder: " + (taskInput.value || "New task"));
+      }
+    }
+
+    // Set alarm for existing task
+    function setAlarmManually(index) {
+      if (!tasks[index].dueDateTime) return;
+      
+      if (confirm(`Set alarm for ${formatDueDate(tasks[index].dueDateTime)}?`)) {
+        tasks[index].hasAlarm = true;
+        saveTasks();
+        scheduleNotification(tasks[index].dueDateTime, tasks[index].text);
+        renderTasks();
+      }
+    }
+
+    // Schedule notification
+    function scheduleNotification(dateTime, message) {
+      const alarmTime = new Date(dateTime).getTime();
+      const now = new Date().getTime();
+      const timeout = alarmTime - now;
+
+      if (timeout <= 0) {
+        alert('Time must be in the future!');
+        return;
+      }
+
+      setTimeout(() => {
+        if (Notification.permission === 'granted') {
+          new Notification('To-Do Reminder', {
+            body: message,
+            icon: 'https://cdn-icons-png.flaticon.com/512/3652/3652191.png'
+          });
+        } else {
+          alert(`REMINDER: ${message}`);
+        }
+      }, timeout);
+    }
+
+    // Toggle completion
+    function toggleComplete(index) {
+      tasks[index].completed = !tasks[index].completed;
+      saveTasks();
+      renderTasks();
+    }
+
+    // Delete task
+    function deleteTask(index) {
+      tasks.splice(index, 1);
+      saveTasks();
+      renderTasks();
+    }
+
+    // Clear all tasks
+    function clearAllTasks() {
+      if (confirm('Delete all tasks?')) {
+        tasks = [];
+        saveTasks();
+        renderTasks();
+      }
+    }
+
+    // Save to localStorage
+    function saveTasks() {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    // Event listeners
+    addBtn.addEventListener('click', addTask);
+    setAlarmBtn.addEventListener('click', setAlarm);
+    taskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        addTask();
+      }
+    });
+    clearAllBtn.addEventListener('click', clearAllTasks);
+
+    // Set default date to today
+    dueDate.valueAsDate = new Date();
+
+    // Initial render
+    renderTasks();
+  </script>
+</body>
+</html>
